@@ -6,7 +6,7 @@ https://github.com/theOrakle/netbox
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.const import CONF_HOST, CONF_API_TOKEN, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -15,9 +15,8 @@ from .const import DOMAIN
 from .coordinator import NetboxDataUpdateCoordinator
 
 PLATFORMS: list[Platform] = [
-    Platform.SENSOR,
     Platform.BINARY_SENSOR,
-    Platform.SWITCH,
+    Platform.UPDATE,
 ]
 
 
@@ -28,8 +27,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator = NetboxDataUpdateCoordinator(
         hass=hass,
         client=NetboxApiClient(
-            username=entry.data[CONF_USERNAME],
-            password=entry.data[CONF_PASSWORD],
+            host=entry.data[CONF_HOST],
+            token=entry.data[CONF_API_TOKEN],
             session=async_get_clientsession(hass),
         ),
     )

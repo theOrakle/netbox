@@ -1,14 +1,12 @@
 {
   "domain": "netbox",
   "name": "Netbox",
-  "documentation": "https://github.com/theOrakle/netbox",
   "config_flow": true,
   "integration_type": "hub",
-  "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/theOrakle/netbox/issues",
+  "iot_class": "local_polling",
   "loggers": ["custom_components.netbox"],
-  "requirements": [],
-  "version": "0.0.0",
+  "requirements": ["pynetbox"],
+  "version": "1.0.1",
   "dependencies": [],
   "codeowners": ["@theOrakle"]
 }

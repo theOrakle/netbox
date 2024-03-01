@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_HOST, CONF_API_TOKEN
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
@@ -29,9 +29,9 @@ class NetboxFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         _errors = {}
         if user_input is not None:
             try:
-                await self._test_credentials(
-                    username=user_input[CONF_USERNAME],
-                    password=user_input[CONF_PASSWORD],
+                await self._test_connection(
+                    host=user_input[CONF_HOST],
+                    api_token=user_input[CONF_API_TOKEN],
                 )
             except NetboxApiClientAuthenticationError as exception:
                 LOGGER.warning(exception)
@@ -44,7 +44,7 @@ class NetboxFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 _errors["base"] = "unknown"
             else:
                 return self.async_create_entry(
-                    title=user_input[CONF_USERNAME],
+                    title=user_input[CONF_HOST],
                     data=user_input,
                 )
 
@@ -52,17 +52,14 @@ class NetboxFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_USERNAME,
-                        default=(user_input or {}).get(CONF_USERNAME),
-                    ): selector.TextSelector(
+                    vol.Required(CONF_HOST): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.TEXT
                         ),
                     ),
-                    vol.Required(CONF_PASSWORD): selector.TextSelector(
+                    vol.Required(CONF_API_TOKEN): selector.TextSelector(
                         selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.PASSWORD
+                            type=selector.TextSelectorType.TEXT
                         ),
                     ),
                 }
@@ -70,11 +67,11 @@ class NetboxFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=_errors,
         )
 
-    async def _test_credentials(self, username: str, password: str) -> None:
-        """Validate credentials."""
+    async def _test_connection(self, host: str, api_token: str) -> None:
+        """Validate host."""
         client = NetboxApiClient(
-            username=username,
-            password=password,
+            host=host,
+            token=api_token,
             session=async_create_clientsession(self.hass),
         )
         await client.async_get_data()
