@@ -1,6 +1,6 @@
 # Netbox for Home Assistant
 
-Home Assistant integration for Netbox IPAM Netbox-LONG DCIM.
+Home Assistant integration for Netbox IPAM & DCIM.
 
 # Installation
 
