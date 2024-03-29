@@ -55,7 +55,10 @@ class NetboxApiClient:
         )
         script_status = {}
         for script in response["results"]:
-            script_status[script["name"]] = script["result"]["status"]["value"]
+            try:
+                script_status[script["name"]] = script["result"]["status"]["value"]
+            except:
+                script_status[script["name"]] = 'N/A'
         data["script-status"] = script_status
         LOGGER.debug(data)
         return data
