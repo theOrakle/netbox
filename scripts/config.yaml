@@ -1,0 +1,10 @@
+ipam:
+  address: "https://ipam.14671.net"
+  token: "edd8ea663758525465a326ad9f91212cd12463ec"
+
+unifi:
+  host: "udm.14671.net"
+  port: 443
+  username: "unifi.service"
+  password: "yGoxqEWVnFDnok4tpJbbLNnq"
+  version: "UDMP-unifiOS"

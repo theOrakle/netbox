@@ -60,5 +60,7 @@ class NetboxSensor(NetboxEntity, BinarySensorEntity):
         scripts = self.coordinator.data.get(desc.key)
         for script in self.coordinator.data.get(desc.key):
             self._attributes[script] = scripts[script]
-        value = max(scripts, key=scripts.get)
-        return value == "completed" 
+        #value = max(scripts, key=scripts.get)
+        value = "error" in scripts
+        #return value == "completed" 
+        return value 
