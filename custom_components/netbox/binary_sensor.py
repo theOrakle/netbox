@@ -1,6 +1,8 @@
 """Binary sensor platform for netbox."""
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
@@ -8,11 +10,9 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.const import EntityCategory
 
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN
 from .coordinator import NetboxDataUpdateCoordinator
 from .entity import NetboxEntity
-
-from datetime import datetime as dt
 
 ENTITY_DESCRIPTIONS = (
     BinarySensorEntityDescription(
@@ -20,6 +20,7 @@ ENTITY_DESCRIPTIONS = (
         name="Script Execution",
         icon="mdi:script",
         device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
 )
 
@@ -42,23 +43,30 @@ class NetboxSensor(NetboxEntity, BinarySensorEntity):
     def __init__(
         self,
         coordinator: NetboxDataUpdateCoordinator,
-        entity_description: SensorEntityDescription,
+        entity_description: BinarySensorEntityDescription,
     ) -> None:
         """Initialize the binary_sensor class."""
-        super().__init__(coordinator,entity_description)
-        self._attributes = {}
+        super().__init__(coordinator, entity_description)
+        self._attr_extra_state_attributes: dict[str, Any] = {}
         self.entity_description = entity_description
-
-    @property
-    def state_attributes(self):
-        return self._attributes
 
     @property
     def is_on(self) -> bool:
         """Return true if the binary_sensor is on."""
         desc = self.entity_description
-        scripts = self.coordinator.data.get(desc.key)
-        for script in self.coordinator.data.get(desc.key):
-            self._attributes[script] = scripts[script]
-        value = "errored" in scripts.values()
-        return value 
+        data = self.coordinator.data or {}
+        scripts = data.get(desc.key) or {}
+
+        if not isinstance(scripts, dict):
+            self._attr_extra_state_attributes = {}
+            return False
+
+        self._attr_extra_state_attributes = {
+            name: status for name, status in scripts.items()
+        }
+        return any(status == "errored" for status in scripts.values())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the state attributes of the binary sensor."""
+        return self._attr_extra_state_attributes

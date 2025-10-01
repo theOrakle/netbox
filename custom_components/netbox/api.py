@@ -53,12 +53,18 @@ class NetboxApiClient:
         response = await self._api_wrapper(
             method="get", url=f"https://{self._host}/api/extras/scripts"
         )
-        script_status = {}
-        for script in response["results"]:
-            try:
-                script_status[script["name"]] = script["result"]["status"]["value"]
-            except:
-                script_status[script["name"]] = 'N/A'
+        script_status: dict[str, str] = {}
+        for script in response.get("results", []) or []:
+            name = script.get("name")
+            if not name:
+                continue
+
+            status = (
+                script.get("result", {})
+                .get("status", {})
+                .get("value")
+            )
+            script_status[name] = status or "N/A"
         data["script-status"] = script_status
         LOGGER.debug(data)
         return data
