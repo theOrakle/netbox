@@ -3,6 +3,6 @@ from logging import Logger, getLogger
 
 LOGGER: Logger = getLogger(__package__)
 
-NAME = "Integration blueprint"
+NAME = "NetBox"
 DOMAIN = "netbox"
-VERSION = "3.0"
+VERSION = "1.0.9"
