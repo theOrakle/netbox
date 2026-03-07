@@ -23,6 +23,12 @@ class NetboxSensorDescription(SensorEntityDescription):
 
 ENTITY_DESCRIPTIONS: tuple[NetboxSensorDescription, ...] = (
     NetboxSensorDescription(
+        key="change_log_last_24h",
+        name="Changes Last 24 Hours",
+        value_key="change-log-last-24h-count",
+        icon="mdi:timeline-clock",
+    ),
+    NetboxSensorDescription(
         key="dcim_total_objects",
         name="DCIM Total Objects",
         value_key="rollup-dcim-total",
@@ -134,6 +140,28 @@ class NetboxSensor(NetboxEntity, SensorEntity):
                 "unavailable_endpoints": self.coordinator.data.get(
                     self.entity_description.unavailable_key or "",
                     [],
+                ),
+            }
+        if self.entity_description.key == "change_log_last_24h":
+            return {
+                "action_counts": self.coordinator.data.get(
+                    "change-log-last-24h-actions",
+                    {},
+                ),
+                "object_type_counts": self.coordinator.data.get(
+                    "change-log-last-24h-object-types",
+                    {},
+                ),
+                "pages_scanned": self.coordinator.data.get(
+                    "change-log-last-24h-pages-scanned",
+                    0,
+                ),
+                "truncated": self.coordinator.data.get(
+                    "change-log-last-24h-truncated",
+                    False,
+                ),
+                "window_start": self.coordinator.data.get(
+                    "change-log-last-24h-window-start",
                 ),
             }
         if self.entity_description.key == "plugins_count":

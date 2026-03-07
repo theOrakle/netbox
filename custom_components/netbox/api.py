@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import socket
 from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import aiohttp
@@ -42,6 +43,9 @@ SECTION_ENDPOINTS: dict[str, tuple[tuple[str, str], ...]] = {
         ("custom_fields", "extras/custom-fields/"),
     ),
 }
+
+CHANGELOG_PAGE_SIZE = 100
+CHANGELOG_MAX_PAGES = 50
 
 
 class NetboxApiClientError(Exception):
@@ -112,6 +116,13 @@ class NetboxApiClient:
             1 for value in script_status.values() if _is_error_status(value)
         )
         data.update(await self._async_get_section_rollups())
+        try:
+            data.update(await self._async_get_changelog_rollup())
+        except NetboxApiClientAuthenticationError:
+            raise
+        except NetboxApiClientError as exception:
+            LOGGER.debug("Unable to load changelog rollup: %s", exception)
+            data.update(_empty_changelog_rollup())
 
         LOGGER.debug(data)
         return data
@@ -195,6 +206,90 @@ class NetboxApiClient:
                 f"Error loading endpoint {endpoint_path}",
             ) from exception
 
+    async def _async_get_changelog_rollup(self) -> dict[str, Any]:
+        """Fetch count of object changes in the last 24 hours."""
+        cutoff = datetime.now(UTC) - timedelta(hours=24)
+        next_url: str | None = (
+            f"https://{self._host}/api/extras/object-changes/?limit={CHANGELOG_PAGE_SIZE}"
+        )
+        actions: dict[str, int] = {}
+        object_types: dict[str, int] = {}
+        count = 0
+        pages_scanned = 0
+        truncated = False
+
+        try:
+            while next_url:
+                if pages_scanned >= CHANGELOG_MAX_PAGES:
+                    truncated = True
+                    break
+                pages_scanned += 1
+
+                async with async_timeout.timeout(10):
+                    response = await self._session.request(
+                        method="get",
+                        url=next_url,
+                        headers=self._auth_headers(),
+                    )
+
+                if response.status in (401, 403):
+                    raise NetboxApiClientAuthenticationError("Invalid credentials")
+                if response.status in (400, 404, 405):
+                    return _empty_changelog_rollup()
+                response.raise_for_status()
+                payload = await response.json()
+
+                results = payload.get("results", [])
+                if not isinstance(results, list):
+                    break
+
+                stop_scan = False
+                for item in results:
+                    if not isinstance(item, dict):
+                        continue
+                    event_time = _parse_api_datetime(item.get("time"))
+                    if event_time is None:
+                        continue
+                    if event_time < cutoff:
+                        stop_scan = True
+                        break
+
+                    count += 1
+                    action = str(item.get("action", "unknown"))
+                    actions[action] = actions.get(action, 0) + 1
+
+                    object_type = _object_type_name(item.get("changed_object_type"))
+                    object_types[object_type] = object_types.get(object_type, 0) + 1
+
+                if stop_scan:
+                    break
+
+                next_candidate = payload.get("next")
+                next_url = str(next_candidate) if next_candidate else None
+        except asyncio.TimeoutError as exception:
+            raise NetboxApiClientCommunicationError(
+                "Timeout loading object-changes",
+            ) from exception
+        except (aiohttp.ClientError, socket.gaierror) as exception:
+            raise NetboxApiClientCommunicationError(
+                "Error loading object-changes",
+            ) from exception
+        except NetboxApiClientAuthenticationError:
+            raise
+        except Exception as exception:  # pylint: disable=broad-except
+            raise NetboxApiClientError(
+                "Unexpected error loading object-changes",
+            ) from exception
+
+        rollup = _empty_changelog_rollup()
+        rollup["change-log-last-24h-count"] = count
+        rollup["change-log-last-24h-actions"] = actions
+        rollup["change-log-last-24h-object-types"] = object_types
+        rollup["change-log-last-24h-pages-scanned"] = pages_scanned
+        rollup["change-log-last-24h-truncated"] = truncated
+        rollup["change-log-last-24h-window-start"] = cutoff.isoformat()
+        return rollup
+
     async def _api_wrapper(
         self,
         method: str,
@@ -252,3 +347,42 @@ def _coalesce(source: dict[str, Any], keys: tuple[str, ...]) -> Any:
 def _is_error_status(value: str) -> bool:
     """Return True when a script status should be treated as a failed script."""
     return str(value).strip().lower() in {"errored", "error", "failed", "failure"}
+
+
+def _parse_api_datetime(value: Any) -> datetime | None:
+    """Parse API datetime values to timezone-aware UTC datetimes."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _object_type_name(value: Any) -> str:
+    """Convert changed object type to a stable string label."""
+    if isinstance(value, dict):
+        app_label = value.get("app_label")
+        model = value.get("model")
+        if app_label and model:
+            return f"{app_label}.{model}"
+        if model:
+            return str(model)
+    if isinstance(value, str) and value:
+        return value
+    return "unknown"
+
+
+def _empty_changelog_rollup() -> dict[str, Any]:
+    """Default changelog rollup payload."""
+    return {
+        "change-log-last-24h-count": 0,
+        "change-log-last-24h-actions": {},
+        "change-log-last-24h-object-types": {},
+        "change-log-last-24h-pages-scanned": 0,
+        "change-log-last-24h-truncated": False,
+        "change-log-last-24h-window-start": None,
+    }
