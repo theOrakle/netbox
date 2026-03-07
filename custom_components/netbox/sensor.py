@@ -17,9 +17,35 @@ class NetboxSensorDescription(SensorEntityDescription):
     """Description of a Netbox sensor."""
 
     value_key: str
+    counts_key: str | None = None
+    unavailable_key: str | None = None
 
 
 ENTITY_DESCRIPTIONS: tuple[NetboxSensorDescription, ...] = (
+    NetboxSensorDescription(
+        key="dcim_total_objects",
+        name="DCIM Total Objects",
+        value_key="rollup-dcim-total",
+        counts_key="rollup-dcim-counts",
+        unavailable_key="rollup-dcim-unavailable",
+        icon="mdi:server-network",
+    ),
+    NetboxSensorDescription(
+        key="ipam_total_objects",
+        name="IPAM Total Objects",
+        value_key="rollup-ipam-total",
+        counts_key="rollup-ipam-counts",
+        unavailable_key="rollup-ipam-unavailable",
+        icon="mdi:ip-network",
+    ),
+    NetboxSensorDescription(
+        key="org_total_objects",
+        name="ORG Total Objects",
+        value_key="rollup-org-total",
+        counts_key="rollup-org-counts",
+        unavailable_key="rollup-org-unavailable",
+        icon="mdi:domain",
+    ),
     NetboxSensorDescription(
         key="netbox_version",
         name="NetBox Version",
@@ -99,6 +125,17 @@ class NetboxSensor(NetboxEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra attributes for selected sensors."""
+        if self.entity_description.counts_key:
+            return {
+                "endpoint_counts": self.coordinator.data.get(
+                    self.entity_description.counts_key,
+                    {},
+                ),
+                "unavailable_endpoints": self.coordinator.data.get(
+                    self.entity_description.unavailable_key or "",
+                    [],
+                ),
+            }
         if self.entity_description.key == "plugins_count":
             return {"plugins": self.coordinator.data.get("plugins", {})}
         if self.entity_description.key == "installed_apps_count":

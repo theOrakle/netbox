@@ -11,6 +11,39 @@ import async_timeout
 
 from .const import LOGGER
 
+
+SECTION_ENDPOINTS: dict[str, tuple[tuple[str, str], ...]] = {
+    "dcim": (
+        ("sites", "dcim/sites/"),
+        ("locations", "dcim/locations/"),
+        ("racks", "dcim/racks/"),
+        ("manufacturers", "dcim/manufacturers/"),
+        ("device_types", "dcim/device-types/"),
+        ("device_roles", "dcim/device-roles/"),
+        ("platforms", "dcim/platforms/"),
+        ("devices", "dcim/devices/"),
+        ("interfaces", "dcim/interfaces/"),
+        ("cables", "dcim/cables/"),
+    ),
+    "ipam": (
+        ("asns", "ipam/asns/"),
+        ("aggregates", "ipam/aggregates/"),
+        ("prefixes", "ipam/prefixes/"),
+        ("ip_addresses", "ipam/ip-addresses/"),
+        ("vlans", "ipam/vlans/"),
+        ("vrfs", "ipam/vrfs/"),
+    ),
+    "org": (
+        ("tenants", "tenancy/tenants/"),
+        ("tenant_groups", "tenancy/tenant-groups/"),
+        ("contacts", "tenancy/contacts/"),
+        ("teams", "tenancy/teams/"),
+        ("tags", "extras/tags/"),
+        ("custom_fields", "extras/custom-fields/"),
+    ),
+}
+
+
 class NetboxApiClientError(Exception):
     """Exception to indicate a general API error."""
 
@@ -78,6 +111,7 @@ class NetboxApiClient:
         data["scripts-errored"] = sum(
             1 for value in script_status.values() if _is_error_status(value)
         )
+        data.update(await self._async_get_section_rollups())
 
         LOGGER.debug(data)
         return data
@@ -102,6 +136,65 @@ class NetboxApiClient:
             next_url = str(next_candidate) if next_candidate else None
         return script_status
 
+    async def _async_get_section_rollups(self) -> dict[str, Any]:
+        """Fetch section rollups for key NetBox domains."""
+        rollups: dict[str, Any] = {}
+        for section, endpoints in SECTION_ENDPOINTS.items():
+            counts: dict[str, int] = {}
+            unavailable: list[str] = []
+            endpoint_names = [name for name, _ in endpoints]
+            tasks = [self._async_get_endpoint_count(name, path) for name, path in endpoints]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for index, result in enumerate(results):
+                if isinstance(result, Exception):
+                    if isinstance(result, NetboxApiClientAuthenticationError):
+                        raise result
+                    LOGGER.debug("Skipping rollup endpoint due to error: %s", result)
+                    unavailable.append(endpoint_names[index])
+                    continue
+                endpoint_name, count = result
+                if count is None:
+                    unavailable.append(endpoint_name)
+                    continue
+                counts[endpoint_name] = count
+
+            rollups[f"rollup-{section}-total"] = sum(counts.values())
+            rollups[f"rollup-{section}-counts"] = counts
+            rollups[f"rollup-{section}-unavailable"] = sorted(unavailable)
+        return rollups
+
+    async def _async_get_endpoint_count(
+        self,
+        endpoint_name: str,
+        endpoint_path: str,
+    ) -> tuple[str, int | None]:
+        """Return an endpoint object count or None when endpoint is unavailable."""
+        try:
+            async with async_timeout.timeout(10):
+                response = await self._session.request(
+                    method="get",
+                    url=f"https://{self._host}/api/{endpoint_path}?limit=1",
+                    headers=self._auth_headers(),
+                )
+                if response.status in (401, 403):
+                    raise NetboxApiClientAuthenticationError("Invalid credentials")
+                if response.status in (400, 404, 405):
+                    return endpoint_name, None
+                response.raise_for_status()
+                payload = await response.json()
+                count = payload.get("count")
+                if isinstance(count, int):
+                    return endpoint_name, count
+                return endpoint_name, None
+        except asyncio.TimeoutError as exception:
+            raise NetboxApiClientCommunicationError(
+                f"Timeout loading endpoint {endpoint_path}",
+            ) from exception
+        except (aiohttp.ClientError, socket.gaierror) as exception:
+            raise NetboxApiClientCommunicationError(
+                f"Error loading endpoint {endpoint_path}",
+            ) from exception
+
     async def _api_wrapper(
         self,
         method: str,
@@ -111,10 +204,7 @@ class NetboxApiClient:
     ) -> dict[str, Any]:
         """Get information from the API."""
         if not headers:
-            headers = {
-                "accept": "application/json",
-                "Authorization": f"Token {self._token}",
-            }
+            headers = self._auth_headers()
         try:
             async with async_timeout.timeout(10):
                 response = await self._session.request(
@@ -142,6 +232,13 @@ class NetboxApiClient:
             raise NetboxApiClientError(
                 "Something really wrong happened!"
             ) from exception
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Return standard API headers for NetBox requests."""
+        return {
+            "accept": "application/json",
+            "Authorization": f"Token {self._token}",
+        }
 
 
 def _coalesce(source: dict[str, Any], keys: tuple[str, ...]) -> Any:
