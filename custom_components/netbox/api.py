@@ -243,6 +243,7 @@ class NetboxApiClient:
         count = 0
         pages_scanned = 0
         truncated = False
+        consecutive_old_pages = 0
 
         try:
             while next_url:
@@ -269,22 +270,34 @@ class NetboxApiClient:
                 if not isinstance(results, list):
                     break
 
+                page_recent_count = 0
+                page_newest_time: datetime | None = None
                 for item in results:
                     if not isinstance(item, dict):
                         continue
                     event_time = _extract_change_datetime(item)
                     if event_time is None:
                         continue
+                    if page_newest_time is None or event_time > page_newest_time:
+                        page_newest_time = event_time
                     if event_time < cutoff:
                         # Keep scanning. Some deployments may not honor ordering.
                         continue
 
                     count += 1
+                    page_recent_count += 1
                     action = str(item.get("action", "unknown"))
                     actions[action] = actions.get(action, 0) + 1
 
                     object_type = _object_type_name(item.get("changed_object_type"))
                     object_types[object_type] = object_types.get(object_type, 0) + 1
+
+                if page_recent_count == 0 and page_newest_time is not None and page_newest_time < cutoff:
+                    consecutive_old_pages += 1
+                else:
+                    consecutive_old_pages = 0
+                if consecutive_old_pages >= 2:
+                    break
 
                 next_candidate = payload.get("next")
                 next_url = str(next_candidate) if next_candidate else None
