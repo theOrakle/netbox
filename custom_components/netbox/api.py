@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import socket
+from collections.abc import Iterable
+from typing import Any
 
 import aiohttp
 import async_timeout
 
-from .const import LOGGER 
+from .const import LOGGER
 
 class NetboxApiClientError(Exception):
     """Exception to indicate a general API error."""
@@ -39,29 +41,66 @@ class NetboxApiClient:
         self._token = token
         self._session = session
 
-    async def async_get_data(self) -> any:
+    async def async_get_data(self) -> dict[str, Any]:
         """Get data from the API."""
-        data = {}
-        results = await self._api_wrapper(
-            method="get", url="https://github.com/netbox-community/netbox/releases/latest"
+        data: dict[str, Any] = {}
+        release = await self._api_wrapper(
+            method="get",
+            url="https://api.github.com/repos/netbox-community/netbox/releases/latest",
+            headers={"accept": "application/vnd.github+json"},
         )
-        data["netbox-latest-version"] = results["tag_name"][1:]
-        results = await self._api_wrapper(
-            method="get", url=f"https://{self._host}/api/status"
+        latest_tag = str(release.get("tag_name", "")).lstrip("v")
+        data["netbox-latest-version"] = latest_tag or None
+
+        status = await self._api_wrapper(
+            method="get",
+            url=f"https://{self._host}/api/status/",
         )
-        data.update(results)
-        response = await self._api_wrapper(
-            method="get", url=f"https://{self._host}/api/extras/scripts"
+        data.update(status)
+        data["netbox-version"] = _coalesce(status, ("netbox-version", "netbox_version"))
+        data["python-version"] = _coalesce(status, ("python-version", "python_version"))
+
+        plugins = _coalesce(status, ("plugins",))
+        installed_apps = _coalesce(status, ("installed-apps", "installed_apps"))
+        workers_running = _coalesce(status, ("rq-workers-running", "rq_workers_running"))
+
+        data["plugins"] = plugins if isinstance(plugins, dict) else {}
+        data["installed-apps"] = (
+            installed_apps if isinstance(installed_apps, list) else []
         )
-        script_status = {}
-        for script in response["results"]:
-            try:
-                script_status[script["name"]] = script["result"]["status"]["value"]
-            except:
-                script_status[script["name"]] = 'N/A'
+        data["rq-workers-running"] = bool(workers_running)
+        data["plugins-count"] = len(data["plugins"])
+        data["installed-apps-count"] = len(data["installed-apps"])
+
+        script_status = await self._async_get_script_status()
         data["script-status"] = script_status
+        data["scripts-total"] = len(script_status)
+        data["scripts-errored"] = sum(
+            1 for value in script_status.values() if _is_error_status(value)
+        )
+
         LOGGER.debug(data)
         return data
+
+    async def _async_get_script_status(self) -> dict[str, str]:
+        """Fetch script execution statuses, following paginated NetBox responses."""
+        script_status: dict[str, str] = {}
+        next_url: str | None = f"https://{self._host}/api/extras/scripts/"
+        while next_url:
+            response = await self._api_wrapper(method="get", url=next_url)
+            results = response.get("results", [])
+            if not isinstance(results, Iterable):
+                break
+            for script in results:
+                if not isinstance(script, dict):
+                    continue
+                name = str(script.get("name", "unknown_script"))
+                result = script.get("result", {}) if isinstance(script.get("result"), dict) else {}
+                status = result.get("status", {}) if isinstance(result.get("status"), dict) else {}
+                script_status[name] = str(status.get("value", "unknown"))
+            next_candidate = response.get("next")
+            next_url = str(next_candidate) if next_candidate else None
+        return script_status
 
     async def _api_wrapper(
         self,
@@ -69,7 +108,7 @@ class NetboxApiClient:
         url: str,
         data: dict | None = None,
         headers: dict | None = None,
-    ) -> any:
+    ) -> dict[str, Any]:
         """Get information from the API."""
         if not headers:
             headers = {
@@ -103,3 +142,16 @@ class NetboxApiClient:
             raise NetboxApiClientError(
                 "Something really wrong happened!"
             ) from exception
+
+
+def _coalesce(source: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    """Return the first key present in source."""
+    for key in keys:
+        if key in source:
+            return source[key]
+    return None
+
+
+def _is_error_status(value: str) -> bool:
+    """Return True when a script status should be treated as a failed script."""
+    return str(value).strip().lower() in {"errored", "error", "failed", "failure"}

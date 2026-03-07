@@ -3,16 +3,13 @@ from __future__ import annotations
 
 from homeassistant.components.update import UpdateEntity, UpdateEntityDescription
 
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN
 from .coordinator import NetboxDataUpdateCoordinator
 from .entity import NetboxEntity
-
-from datetime import datetime as dt
 
 ENTITY_DESCRIPTIONS = (
     UpdateEntityDescription(
         key="netbox-version",
-        translation_key="netbox-latest-version",
         name="Netbox",
         icon="mdi:package",
     ),
@@ -37,10 +34,10 @@ class NetboxUpdate(NetboxEntity, UpdateEntity):
     def __init__(
         self,
         coordinator: NetboxDataUpdateCoordinator,
-        entity_description: SensorEntityDescription,
+        entity_description: UpdateEntityDescription,
     ) -> None:
         """Initialize the update class."""
-        super().__init__(coordinator,entity_description)
+        super().__init__(coordinator, entity_description)
         self.entity_description = entity_description
 
     @property
@@ -53,6 +50,4 @@ class NetboxUpdate(NetboxEntity, UpdateEntity):
     @property
     def latest_version(self) -> str | None:
         """Return latest available version."""
-        desc = self.entity_description
-        value = self.coordinator.data.get(desc.translation_key)
-        return value
+        return self.coordinator.data.get("netbox-latest-version")

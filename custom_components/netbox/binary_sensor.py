@@ -1,23 +1,22 @@
 """Binary sensor platform for netbox."""
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
-from homeassistant.const import EntityCategory
 
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN
 from .coordinator import NetboxDataUpdateCoordinator
 from .entity import NetboxEntity
-
-from datetime import datetime as dt
 
 ENTITY_DESCRIPTIONS = (
     BinarySensorEntityDescription(
         key="script-status",
-        name="Script Execution",
+        name="Script Errors",
         icon="mdi:script",
         device_class=BinarySensorDeviceClass.PROBLEM,
     ),
@@ -42,23 +41,35 @@ class NetboxSensor(NetboxEntity, BinarySensorEntity):
     def __init__(
         self,
         coordinator: NetboxDataUpdateCoordinator,
-        entity_description: SensorEntityDescription,
+        entity_description: BinarySensorEntityDescription,
     ) -> None:
         """Initialize the binary_sensor class."""
-        super().__init__(coordinator,entity_description)
-        self._attributes = {}
+        super().__init__(coordinator, entity_description)
         self.entity_description = entity_description
-
-    @property
-    def state_attributes(self):
-        return self._attributes
 
     @property
     def is_on(self) -> bool:
         """Return true if the binary_sensor is on."""
-        desc = self.entity_description
-        scripts = self.coordinator.data.get(desc.key)
-        for script in self.coordinator.data.get(desc.key):
-            self._attributes[script] = scripts[script]
-        value = "errored" in scripts.values()
-        return value 
+        scripts = self.coordinator.data.get(self.entity_description.key, {})
+        if not isinstance(scripts, dict):
+            return False
+        return any(_is_error_status(status) for status in scripts.values())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return script details as attributes."""
+        scripts = self.coordinator.data.get(self.entity_description.key, {})
+        if not isinstance(scripts, dict):
+            scripts = {}
+        errored = sorted(name for name, status in scripts.items() if _is_error_status(status))
+        return {
+            "scripts_total": len(scripts),
+            "scripts_errored": len(errored),
+            "errored_scripts": errored,
+            "script_status": scripts,
+        }
+
+
+def _is_error_status(value: str) -> bool:
+    """Return True when a script status should be treated as a failed script."""
+    return str(value).strip().lower() in {"errored", "error", "failed", "failure"}

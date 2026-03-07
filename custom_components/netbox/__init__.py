@@ -16,6 +16,7 @@ from .coordinator import NetboxDataUpdateCoordinator
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
+    Platform.SENSOR,
     Platform.UPDATE,
 ]
 
