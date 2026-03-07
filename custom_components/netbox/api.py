@@ -46,6 +46,10 @@ SECTION_ENDPOINTS: dict[str, tuple[tuple[str, str], ...]] = {
 
 CHANGELOG_PAGE_SIZE = 100
 CHANGELOG_MAX_PAGES = 50
+CHANGELOG_ENDPOINTS = (
+    "core/object-changes/",
+    "extras/object-changes/",
+)
 
 
 class NetboxApiClientError(Exception):
@@ -209,9 +213,31 @@ class NetboxApiClient:
     async def _async_get_changelog_rollup(self) -> dict[str, Any]:
         """Fetch count of object changes in the last 24 hours."""
         cutoff = datetime.now(UTC) - timedelta(hours=24)
-        next_url: str | None = (
-            f"https://{self._host}/api/extras/object-changes/?limit={CHANGELOG_PAGE_SIZE}&ordering=-time"
-        )
+        next_url: str | None = None
+        endpoint_status: dict[str, int] = {}
+        selected_endpoint: str | None = None
+        for endpoint in CHANGELOG_ENDPOINTS:
+            probe_url = f"https://{self._host}/api/{endpoint}?limit=1&ordering=-time"
+            async with async_timeout.timeout(10):
+                probe = await self._session.request(
+                    method="get",
+                    url=probe_url,
+                    headers=self._auth_headers(),
+                )
+            endpoint_status[endpoint] = probe.status
+            if probe.status in (401, 403):
+                raise NetboxApiClientAuthenticationError("Invalid credentials")
+            if probe.status in (400, 404, 405):
+                continue
+            probe.raise_for_status()
+            selected_endpoint = endpoint
+            next_url = f"https://{self._host}/api/{endpoint}?limit={CHANGELOG_PAGE_SIZE}&ordering=-time"
+            break
+        if not next_url:
+            rollup = _empty_changelog_rollup()
+            rollup["change-log-source-endpoint"] = None
+            rollup["change-log-endpoint-status"] = endpoint_status
+            return rollup
         actions: dict[str, int] = {}
         object_types: dict[str, int] = {}
         count = 0
@@ -284,6 +310,8 @@ class NetboxApiClient:
         rollup["change-log-last-24h-pages-scanned"] = pages_scanned
         rollup["change-log-last-24h-truncated"] = truncated
         rollup["change-log-last-24h-window-start"] = cutoff.isoformat()
+        rollup["change-log-source-endpoint"] = selected_endpoint
+        rollup["change-log-endpoint-status"] = endpoint_status
         return rollup
 
     async def _api_wrapper(
@@ -390,4 +418,6 @@ def _empty_changelog_rollup() -> dict[str, Any]:
         "change-log-last-24h-pages-scanned": 0,
         "change-log-last-24h-truncated": False,
         "change-log-last-24h-window-start": None,
+        "change-log-source-endpoint": None,
+        "change-log-endpoint-status": {},
     }

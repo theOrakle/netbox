@@ -163,6 +163,13 @@ class NetboxSensor(NetboxEntity, SensorEntity):
                 "window_start": self.coordinator.data.get(
                     "change-log-last-24h-window-start",
                 ),
+                "source_endpoint": self.coordinator.data.get(
+                    "change-log-source-endpoint",
+                ),
+                "endpoint_status": self.coordinator.data.get(
+                    "change-log-endpoint-status",
+                    {},
+                ),
             }
         if self.entity_description.key == "plugins_count":
             return {"plugins": self.coordinator.data.get("plugins", {})}
