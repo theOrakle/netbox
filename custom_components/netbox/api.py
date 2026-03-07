@@ -210,7 +210,7 @@ class NetboxApiClient:
         """Fetch count of object changes in the last 24 hours."""
         cutoff = datetime.now(UTC) - timedelta(hours=24)
         next_url: str | None = (
-            f"https://{self._host}/api/extras/object-changes/?limit={CHANGELOG_PAGE_SIZE}"
+            f"https://{self._host}/api/extras/object-changes/?limit={CHANGELOG_PAGE_SIZE}&ordering=-time"
         )
         actions: dict[str, int] = {}
         object_types: dict[str, int] = {}
@@ -243,16 +243,15 @@ class NetboxApiClient:
                 if not isinstance(results, list):
                     break
 
-                stop_scan = False
                 for item in results:
                     if not isinstance(item, dict):
                         continue
-                    event_time = _parse_api_datetime(item.get("time"))
+                    event_time = _extract_change_datetime(item)
                     if event_time is None:
                         continue
                     if event_time < cutoff:
-                        stop_scan = True
-                        break
+                        # Keep scanning. Some deployments may not honor ordering.
+                        continue
 
                     count += 1
                     action = str(item.get("action", "unknown"))
@@ -260,9 +259,6 @@ class NetboxApiClient:
 
                     object_type = _object_type_name(item.get("changed_object_type"))
                     object_types[object_type] = object_types.get(object_type, 0) + 1
-
-                if stop_scan:
-                    break
 
                 next_candidate = payload.get("next")
                 next_url = str(next_candidate) if next_candidate else None
@@ -360,6 +356,15 @@ def _parse_api_datetime(value: Any) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _extract_change_datetime(item: dict[str, Any]) -> datetime | None:
+    """Extract a timestamp from a NetBox object-change item."""
+    for key in ("time", "created", "last_updated", "timestamp"):
+        parsed = _parse_api_datetime(item.get(key))
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def _object_type_name(value: Any) -> str:
