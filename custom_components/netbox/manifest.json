@@ -7,9 +7,7 @@
   "loggers": [
     "custom_components.netbox"
   ],
-  "requirements": [
-    "pynetbox"
-  ],
+  "requirements": [],
   "version": "1.2.4",
   "dependencies": [],
   "codeowners": [
