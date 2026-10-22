@@ -1,7 +1,10 @@
 # Netbox for Home Assistant
 
 <p align="center">
-  <img src="assets/netbox.svg" alt="NetBox" width="120" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/netbox-dark.svg">
+    <img src="assets/netbox-light.svg" alt="NetBox" width="300">
+  </picture>
 </p>
 
 Home Assistant integration for Netbox IPAM & DCIM.
