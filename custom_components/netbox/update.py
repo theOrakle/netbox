@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from homeassistant.components.update import UpdateEntity, UpdateEntityDescription
 
-from .const import DOMAIN
-from .coordinator import NetboxDataUpdateCoordinator
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .coordinator import NetboxConfigEntry, NetboxDataUpdateCoordinator
 from .entity import NetboxEntity
 
 ENTITY_DESCRIPTIONS = (
@@ -16,10 +18,14 @@ ENTITY_DESCRIPTIONS = (
 )
 
 
-async def async_setup_entry(hass, entry, async_add_devices):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: NetboxConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up the update platform."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_devices(
+    coordinator = entry.runtime_data
+    async_add_entities(
         NetboxUpdate(
             coordinator=coordinator,
             entity_description=entity_description,
@@ -38,7 +44,6 @@ class NetboxUpdate(NetboxEntity, UpdateEntity):
     ) -> None:
         """Initialize the update class."""
         super().__init__(coordinator, entity_description)
-        self.entity_description = entity_description
 
     @property
     def installed_version(self) -> str | None:

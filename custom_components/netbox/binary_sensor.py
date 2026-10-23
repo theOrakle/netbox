@@ -9,8 +9,10 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 
-from .const import DOMAIN
-from .coordinator import NetboxDataUpdateCoordinator
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .coordinator import NetboxConfigEntry, NetboxDataUpdateCoordinator
 from .entity import NetboxEntity
 
 ENTITY_DESCRIPTIONS = (
@@ -23,11 +25,15 @@ ENTITY_DESCRIPTIONS = (
 )
 
 
-async def async_setup_entry(hass, entry, async_add_devices):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: NetboxConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up the binary_sensor platform."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_devices(
-        NetboxSensor(
+    coordinator = entry.runtime_data
+    async_add_entities(
+        NetboxBinarySensor(
             coordinator=coordinator,
             entity_description=entity_description,
         )
@@ -35,7 +41,7 @@ async def async_setup_entry(hass, entry, async_add_devices):
     )
 
 
-class NetboxSensor(NetboxEntity, BinarySensorEntity):
+class NetboxBinarySensor(NetboxEntity, BinarySensorEntity):
     """netbox binary_sensor class."""
 
     def __init__(
@@ -45,7 +51,6 @@ class NetboxSensor(NetboxEntity, BinarySensorEntity):
     ) -> None:
         """Initialize the binary_sensor class."""
         super().__init__(coordinator, entity_description)
-        self.entity_description = entity_description
 
     @property
     def is_on(self) -> bool:

@@ -9,6 +9,8 @@
 
 Home Assistant integration for Netbox IPAM & DCIM.
 
+It connects to your NetBox server with an API token (polled every 2 minutes) and creates one device with sensors for object totals, recent change counts, versions and script status, a script-error binary sensor, and an update entity showing whether a newer NetBox release exists.
+
 # Installation
 
 There are two main ways to install this custom component within your Home Assistant instance:
@@ -40,5 +42,15 @@ There is a config flow for this integration. After installing the custom compone
 2. Click **+ Add integration** (bottom right) to set up a new integration
 3. Search for **Netbox** and click on it
 4. You will be guided through the rest of the setup process via the config flow
+
+# Actions
+
+This integration does not provide any actions. Control devices through the entities it creates (for example with the standard `switch`, `light`, `select` or `climate` actions).
+
+# Removing the integration
+
+1. Go to **Settings** → **Devices & services**, open **Netbox**, click the three-dot menu (⋮) next to the entry and choose **Delete**. The NetBox server entry, its devices and its entities are removed.
+2. If you installed through HACS, open **HACS**, find **Netbox**, click the three-dot menu (⋮) and choose **Remove**. For a manual install, delete the **custom_components/netbox** folder instead.
+3. Restart Home Assistant.
 
 ---

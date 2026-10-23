@@ -8,7 +8,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import aiohttp
-import async_timeout
 
 from .const import LOGGER
 
@@ -185,7 +184,7 @@ class NetboxApiClient:
     ) -> tuple[str, int | None]:
         """Return an endpoint object count or None when endpoint is unavailable."""
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 response = await self._session.request(
                     method="get",
                     url=f"https://{self._host}/api/{endpoint_path}?limit=1",
@@ -218,7 +217,7 @@ class NetboxApiClient:
         selected_endpoint: str | None = None
         for endpoint in CHANGELOG_ENDPOINTS:
             probe_url = f"https://{self._host}/api/{endpoint}?limit=1&ordering=-time"
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 probe = await self._session.request(
                     method="get",
                     url=probe_url,
@@ -252,7 +251,7 @@ class NetboxApiClient:
                     break
                 pages_scanned += 1
 
-                async with async_timeout.timeout(10):
+                async with asyncio.timeout(10):
                     response = await self._session.request(
                         method="get",
                         url=next_url,
@@ -338,7 +337,7 @@ class NetboxApiClient:
         if not headers:
             headers = self._auth_headers()
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 response = await self._session.request(
                     method=method,
                     url=url,

@@ -1,7 +1,11 @@
 {
   "name": "Netbox",
-  "domains": ["binary_sensor", "sensor"],
-  "homeassistant": "2023.1.0",
+  "domains": [
+    "binary_sensor",
+    "sensor",
+    "update"
+  ],
+  "homeassistant": "2025.1.0",
   "iot_class": "local_polling",
   "render_readme": true
 }
